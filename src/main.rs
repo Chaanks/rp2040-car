@@ -4,10 +4,14 @@
 #![no_std]
 #![no_main]
 
-use bsp::entry;
+use bsp::{
+    entry,
+    hal::{usb, Timer},
+};
 use defmt::*;
 use defmt_rtt as _;
 use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::PwmPin;
 use panic_probe as _;
 
 // Provide an alias for our BSP so we can switch targets quickly.
@@ -21,6 +25,16 @@ use bsp::hal::{
     sio::Sio,
     watchdog::Watchdog,
 };
+
+// USB Device support
+use usb_device::{class_prelude::*, prelude::*};
+
+// USB Communications Class Device support
+use usbd_serial::SerialPort;
+
+// Used to demonstrate writing formatted strings
+use core::fmt::Write;
+use heapless::String;
 
 #[entry]
 fn main() -> ! {
@@ -53,16 +67,49 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
+    // Init PWMs
+    let mut pwm_slices = bsp::hal::pwm::Slices::new(pac.PWM, &mut pac.RESETS);
+
+    // Configure PWM1 for motor 1
+    let pwm = &mut pwm_slices.pwm1;
+    pwm.set_ph_correct();
+    pwm.enable();
+
+    // Output channel B on PWM1 to GPIO 3
+    let m1f_pwm = &mut pwm.channel_b;
+    m1f_pwm.output_to(pins.gpio3);
+
+    let m1b_pwm = &mut pwm.channel_a;
+    m1b_pwm.output_to(pins.gpio2);
+
+    // // Configure PWM1 for motor 1
+    // let pwm = &mut pwm_slices.pwm1;
+    // pwm.set_ph_correct();
+    // pwm.enable();
+
+    // M1 FP 3
+    // M1 BP 2
+    // M2 FP 6
+    // M2 BP 7
     let mut led_pin = pins.led.into_push_pull_output();
+    // let mut m1_f = pins.gpio3.into_push_pull_output();
+    // let mut m1_b = pins.gpio2.into_push_pull_output();
+    // let mut m2_f = pins.gpio6.into_push_pull_output();
+    // let mut m2_b = pins.gpio7.into_push_pull_output();
 
     loop {
         info!("on!");
         led_pin.set_high().unwrap();
-        delay.delay_ms(500);
+        for i in (0..65535).skip(1000) {
+            m1f_pwm.set_duty(i);
+            m1b_pwm.set_duty(0);
+            delay.delay_us(200);
+        }
+
         info!("off!");
         led_pin.set_low().unwrap();
-        delay.delay_ms(500);
+        m1f_pwm.set_duty(0);
+        m1b_pwm.set_duty(0);
+        delay.delay_ms(2000);
     }
 }
-
-// End of file
