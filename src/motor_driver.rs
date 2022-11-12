@@ -15,8 +15,8 @@ pub enum Direction {
 }
 
 pub struct Motor<'a, S: SliceId, M: SliceMode, C1: ChannelId, C2: ChannelId> {
-    mf_pwm: &'a mut Channel<S, M, C2>,
-    mb_pwm: &'a mut Channel<S, M, C1>,
+    mf_pwm: &'a mut Channel<S, M, C1>,
+    mb_pwm: &'a mut Channel<S, M, C2>,
 }
 
 impl<'a, S: SliceId> Motor<'a, S, FreeRunning, A, B> {
@@ -48,11 +48,11 @@ pub fn init_motor_1(
     pwm_1.set_ph_correct();
     pwm_1.enable();
 
-    let mf_pwm = &mut pwm_1.channel_b;
-    mf_pwm.output_to(gpio_3);
+    let mf_pwm = &mut pwm_1.channel_a;
+    mf_pwm.output_to(gpio_2);
 
-    let mb_pwm = &mut pwm_1.channel_a;
-    mb_pwm.output_to(gpio_2);
+    let mb_pwm = &mut pwm_1.channel_b;
+    mb_pwm.output_to(gpio_3);
 
     Motor { mf_pwm, mb_pwm }
 }
@@ -61,7 +61,7 @@ pub fn init_motor_2(
     pwm_3: &mut Slice<Pwm3, FreeRunning>,
     gpio_6: Pin<Gpio6, Disabled<PullDown>>,
     gpio_7: Pin<Gpio7, Disabled<PullDown>>,
-) -> Motor<Pwm3, FreeRunning, B, A> {
+) -> Motor<Pwm3, FreeRunning, A, B> {
     pwm_3.set_ph_correct();
     pwm_3.enable();
 

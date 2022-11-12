@@ -19,6 +19,9 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 # We're using a Pico by default on this template
 rp-pico = "0.5"
 
+postcard = "1.0.0"
+serde = { version = "1.0.*", default-features = false }
+
 # but you can use any BSP. Uncomment this to use the pro_micro_rp2040 BSP instead
 # sparkfun-pro-micro-rp2040 = "0.3"
 

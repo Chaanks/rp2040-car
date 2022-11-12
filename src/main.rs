@@ -38,6 +38,15 @@ use usbd_serial::SerialPort;
 use core::fmt::Write;
 use heapless::String;
 
+use core::ops::Deref;
+use postcard::{from_bytes, to_vec};
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+struct Message<'a> {
+    str_s: &'a str,
+}
+
 #[entry]
 fn main() -> ! {
     info!("Program start");
@@ -69,6 +78,26 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
+    // Set up the USB driver
+    let usb_bus = UsbBusAllocator::new(usb::UsbBus::new(
+        pac.USBCTRL_REGS,
+        pac.USBCTRL_DPRAM,
+        clocks.usb_clock,
+        true,
+        &mut pac.RESETS,
+    ));
+
+    // Set up the USB Communications Class Device driver
+    let mut serial = SerialPort::new(&usb_bus);
+
+    // Create a USB device with a fake VID and PID
+    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
+        .manufacturer("Fake company")
+        .product("Serial port")
+        .serial_number("TEST")
+        .device_class(2) // from: https://www.usb.org/defined-class-codes
+        .build();
+
     let mut led_pin = pins.led.into_push_pull_output();
 
     // Init PWMs
@@ -78,14 +107,54 @@ fn main() -> ! {
     let mut m2 = motor_driver::init_motor_2(&mut pwm_slices.pwm3, pins.gpio6, pins.gpio7);
 
     loop {
-        info!("on!");
-        led_pin.set_high().unwrap();
-        m1.set(motor_driver::Direction::Forward, 50.);
-        delay.delay_ms(2000);
+        // Check for new data
+        if usb_dev.poll(&mut [&mut serial]) {
+            info!("receive data");
+            let mut buf = [0u8; 64];
+            match serial.read(&mut buf) {
+                Err(_e) => {
+                    // Do nothing
+                }
+                Ok(0) => {
+                    // Do nothing
+                }
+                Ok(count) => {
+                    // Convert to upper case
+                    buf.iter_mut().take(count).for_each(|b| {
+                        b.make_ascii_uppercase();
+                    });
 
-        info!("off!");
-        led_pin.set_low().unwrap();
-        m1.stop();
-        delay.delay_ms(2000);
+                    // Send back to the host
+                    let mut wr_ptr = &buf[..count];
+                    let out: Message = from_bytes(wr_ptr.deref()).unwrap();
+                    info!("{}", out.str_s);
+
+                    while !wr_ptr.is_empty() {
+                        match serial.write(wr_ptr) {
+                            Ok(len) => wr_ptr = &wr_ptr[len..],
+                            // On error, just drop unwritten data.
+                            // One possible error is Err(WouldBlock), meaning the USB
+                            // write buffer is full.
+                            Err(_) => break,
+                        };
+                    }
+                }
+            }
+        }
+
+        // info!("on!");
+        // led_pin.set_high().unwrap();
+        // //m1.set(motor_driver::Direction::Forward, 60.);
+        // for i in 0..9 {
+        //     m2.set(motor_driver::Direction::Forward, i as f32 * 10.);
+        //     delay.delay_us(300);
+        // }
+        // delay.delay_ms(2000);
+
+        // info!("off!");
+        // led_pin.set_low().unwrap();
+        // m2.stop();
+        // m1.stop();
+        // delay.delay_ms(2000);
     }
 }
