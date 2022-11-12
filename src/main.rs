@@ -4,6 +4,8 @@
 #![no_std]
 #![no_main]
 
+mod motor_driver;
+
 use bsp::{
     entry,
     hal::{usb, Timer},
@@ -67,49 +69,23 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
+    let mut led_pin = pins.led.into_push_pull_output();
+
     // Init PWMs
     let mut pwm_slices = bsp::hal::pwm::Slices::new(pac.PWM, &mut pac.RESETS);
 
-    // Configure PWM1 for motor 1
-    let pwm = &mut pwm_slices.pwm1;
-    pwm.set_ph_correct();
-    pwm.enable();
-
-    // Output channel B on PWM1 to GPIO 3
-    let m1f_pwm = &mut pwm.channel_b;
-    m1f_pwm.output_to(pins.gpio3);
-
-    let m1b_pwm = &mut pwm.channel_a;
-    m1b_pwm.output_to(pins.gpio2);
-
-    // // Configure PWM1 for motor 1
-    // let pwm = &mut pwm_slices.pwm1;
-    // pwm.set_ph_correct();
-    // pwm.enable();
-
-    // M1 FP 3
-    // M1 BP 2
-    // M2 FP 6
-    // M2 BP 7
-    let mut led_pin = pins.led.into_push_pull_output();
-    // let mut m1_f = pins.gpio3.into_push_pull_output();
-    // let mut m1_b = pins.gpio2.into_push_pull_output();
-    // let mut m2_f = pins.gpio6.into_push_pull_output();
-    // let mut m2_b = pins.gpio7.into_push_pull_output();
+    let mut m1 = motor_driver::init_motor_1(&mut pwm_slices.pwm1, pins.gpio2, pins.gpio3);
+    let mut m2 = motor_driver::init_motor_2(&mut pwm_slices.pwm3, pins.gpio6, pins.gpio7);
 
     loop {
         info!("on!");
         led_pin.set_high().unwrap();
-        for i in (0..65535).skip(1000) {
-            m1f_pwm.set_duty(i);
-            m1b_pwm.set_duty(0);
-            delay.delay_us(200);
-        }
+        m1.set(motor_driver::Direction::Forward, 50.);
+        delay.delay_ms(2000);
 
         info!("off!");
         led_pin.set_low().unwrap();
-        m1f_pwm.set_duty(0);
-        m1b_pwm.set_duty(0);
+        m1.stop();
         delay.delay_ms(2000);
     }
 }
