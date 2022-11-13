@@ -36,7 +36,7 @@ use usbd_serial::SerialPort;
 
 // Used to demonstrate writing formatted strings
 use core::fmt::Write;
-use heapless::String;
+use heapless::{String, Vec};
 
 use core::ops::Deref;
 use postcard::{from_bytes, to_vec};
@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 struct Message<'a> {
-    str_s: &'a str,
+    str_s: &'a [u8],
 }
 
 #[entry]
@@ -106,10 +106,38 @@ fn main() -> ! {
     let mut m1 = motor_driver::init_motor_1(&mut pwm_slices.pwm1, pins.gpio2, pins.gpio3);
     let mut m2 = motor_driver::init_motor_2(&mut pwm_slices.pwm3, pins.gpio6, pins.gpio7);
 
+    let timer = bsp::hal::Timer::new(pac.TIMER, &mut pac.RESETS);
+    let mut said_hello = false;
     loop {
+        // m2.stop();
+        // m1.stop();
+
+        // info!("on!");
+        // led_pin.set_high().unwrap();
+        // delay.delay_ms(2000);
+
+        // info!("off!");
+        // led_pin.set_low().unwrap();
+        // delay.delay_ms(2000);
+
+        // A welcome message at the beginning
+        if !said_hello && timer.get_counter() >= 2_000_000 {
+            said_hello = true;
+            let _ = serial.write(b"Hello, World!\r\n");
+
+            let time = timer.get_counter();
+            let mut text: String<64> = String::new();
+            writeln!(&mut text, "Current timer ticks: {}", time).unwrap();
+
+            // This only works reliably because the number of bytes written to
+            // the serial port is smaller than the buffers available to the USB
+            // peripheral. In general, the return value should be handled, so that
+            // bytes not transferred yet don't get lost.
+            let _ = serial.write(text.as_bytes());
+        }
+
         // Check for new data
         if usb_dev.poll(&mut [&mut serial]) {
-            info!("receive data");
             let mut buf = [0u8; 64];
             match serial.read(&mut buf) {
                 Err(_e) => {
@@ -119,6 +147,7 @@ fn main() -> ! {
                     // Do nothing
                 }
                 Ok(count) => {
+                    info!("receive data");
                     // Convert to upper case
                     buf.iter_mut().take(count).for_each(|b| {
                         b.make_ascii_uppercase();
@@ -126,8 +155,13 @@ fn main() -> ! {
 
                     // Send back to the host
                     let mut wr_ptr = &buf[..count];
-                    let out: Message = from_bytes(wr_ptr.deref()).unwrap();
-                    info!("{}", out.str_s);
+                    let buff: Vec<u8, 64> = Vec::from_slice(&buf).unwrap();
+
+                    let out: Message = match from_bytes(buff.deref()) {
+                        Ok(msg) => msg,
+                        Err(e) => Message { str_s: &[6, 6, 6] },
+                    };
+                    info!("message: {}", out.str_s);
 
                     while !wr_ptr.is_empty() {
                         match serial.write(wr_ptr) {
@@ -142,7 +176,6 @@ fn main() -> ! {
             }
         }
 
-        // info!("on!");
         // led_pin.set_high().unwrap();
         // //m1.set(motor_driver::Direction::Forward, 60.);
         // for i in 0..9 {
@@ -153,8 +186,6 @@ fn main() -> ! {
 
         // info!("off!");
         // led_pin.set_low().unwrap();
-        // m2.stop();
-        // m1.stop();
         // delay.delay_ms(2000);
     }
 }
